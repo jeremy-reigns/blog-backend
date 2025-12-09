@@ -239,8 +239,14 @@ async def summarize(body: SummarizeRequest):
         messages=[{"role": "user", "content": prompt}],
     )
 
-    summary = completion.choices[0].message["content"]
+    # Fix: Handles text or list-of-chunks responses
+    msg = completion.choices[0].message.content
+    summary = msg if isinstance(msg, str) else "".join(
+        chunk.get("text", "") for chunk in msg
+    )
+
     return {"summary": summary}
+
 
 
 # -----------------------
@@ -259,11 +265,24 @@ def export_pdf(blog_id: str):
 
     text_obj = c.beginText(40, height - 50)
     text_obj.setFont("Helvetica", 11)
+    max_width = 90  # characters per line approx
+    y_min = 50      # bottom margin
 
     for line in blog["final_post"].split("\n"):
-        text_obj.textLine(line)
+        # Wrap long lines
+        for wrapped in [line[i:i+max_width] for i in range(0, len(line), max_width)]:
+            if text_obj.getY() <= y_min:
+                c.drawText(text_obj)
+                c.showPage()
+                text_obj = c.beginText(40, height - 50)
+                text_obj.setFont("Helvetica", 11)
+            text_obj.textLine(wrapped)
 
     c.drawText(text_obj)
     c.save()
 
-    return FileResponse(pdf_path, media_type="application/pdf", filename=f"{blog_id}.pdf")
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=f"{blog_id}.pdf",
+    )
